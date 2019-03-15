@@ -14,3 +14,4 @@ build
 .classpath
 .project
 org.eclipse.buildship.core.prefs
+*.DS_Store

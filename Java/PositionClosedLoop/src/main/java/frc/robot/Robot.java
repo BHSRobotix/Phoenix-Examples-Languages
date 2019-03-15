@@ -58,7 +58,7 @@ import com.ctre.phoenix.motorcontrol.can.*;
 
 public class Robot extends TimedRobot {
     /** Hardware */
-	TalonSRX _talon = new TalonSRX(2);
+	TalonSRX _talon = new TalonSRX(5);
 	Joystick _joy = new Joystick(0);
 	
     /** Used to create string thoughout loop */
@@ -73,7 +73,10 @@ public class Robot extends TimedRobot {
 
 	public void robotInit() {
 		/* Config the sensor used for Primary PID and sensor direction */
-        _talon.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 
+        // _talon.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, 
+        //                                     Constants.kPIDLoopIdx,
+		// 		                            Constants.kTimeoutMs);
+        _talon.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Absolute, 
                                             Constants.kPIDLoopIdx,
 				                            Constants.kTimeoutMs);
 
@@ -89,8 +92,8 @@ public class Robot extends TimedRobot {
 		/* Config the peak and nominal outputs, 12V means full */
 		_talon.configNominalOutputForward(0, Constants.kTimeoutMs);
 		_talon.configNominalOutputReverse(0, Constants.kTimeoutMs);
-		_talon.configPeakOutputForward(1, Constants.kTimeoutMs);
-		_talon.configPeakOutputReverse(-1, Constants.kTimeoutMs);
+		_talon.configPeakOutputForward(.3, Constants.kTimeoutMs);
+		_talon.configPeakOutputReverse(-.3, Constants.kTimeoutMs);
 
 		/**
 		 * Config the allowable closed-loop error, Closed-Loop output will be
@@ -123,8 +126,8 @@ public class Robot extends TimedRobot {
 	void commonLoop() {
 		/* Gamepad processing */
 		double leftYstick = _joy.getY();
-		boolean button1 = _joy.getRawButton(1);	// X-Button
-		boolean button2 = _joy.getRawButton(2);	// A-Button
+		boolean button1 = _joy.getRawButton(1);	// A-Button
+		boolean button2 = _joy.getRawButton(2);	// B-Button
 
 		/* Get Talon/Victor's current output percentage */
 		double motorOutput = _talon.getMotorOutputPercent();
@@ -146,7 +149,7 @@ public class Robot extends TimedRobot {
 		_sb.append("u"); 	// Native units
 
 		/**
-		 * When button 1 is pressed, perform Position Closed Loop to selected position,
+		 * When button 1,A is pressed, perform Position Closed Loop to selected position,
 		 * indicated by Joystick position x10, [-10, 10] rotations
 		 */
 		if (!_lastButton1 && button1) {
@@ -157,7 +160,7 @@ public class Robot extends TimedRobot {
 			_talon.set(ControlMode.Position, targetPositionRotations);
 		}
 
-		/* When button 2 is held, just straight drive */
+		/* When button 2,B is held, just straight drive */
 		if (button2) {
 			/* Percent Output */
 

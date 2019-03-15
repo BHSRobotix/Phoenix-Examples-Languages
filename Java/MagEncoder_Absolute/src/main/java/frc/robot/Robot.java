@@ -74,7 +74,7 @@
                       #@@@@@@@@@*   
 
  * Test procedure
- * [1] Adjust Talon device ID and Gamepad button assignment
+ * [1] Adjust Talon device ID and Gamepad button assignment. Default button is 1(A)
  * [2] Deploy this application
  * [3] Manually move mechanism from hard limit to hard limit.
  * Note the pulseWidPos value in the console output.
@@ -84,7 +84,7 @@
  * [6] Re-deploy and confirm selSenPos is continuous and maintains value after power cycles (persistent). 
  *
  * Controls:
- * Button 1: When button is pressed, seed the quadrature register. You can do this once 
+ * Button 1(A): When button is pressed, seed the quadrature register. You can do this once 
  * 	on boot or during teleop/auton init. If you power cycle the Talon, press the button 
  * 	to confirm it's position is restored.
  * 
@@ -103,23 +103,51 @@ import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 
 public class Robot extends TimedRobot {
 	/** Hardware */
-	TalonSRX _talon = new TalonSRX(3);
+	TalonSRX _talon = new TalonSRX(5);
+	// TalonSRX follower = new TalonSRX(6);
+
 	Joystick _joy = new Joystick(0);
 
-    /* Nonzero to block the config until success, zero to skip checking */
-    final int kTimeoutMs = 30;
-	
-    /**
-	 * If the measured travel has a discontinuity, Note the extremities or
-	 * "book ends" of the travel.
-	 */
-	final boolean kDiscontinuityPresent = true;
-	final int kBookEnd_0 = 910;		/* 80 deg */
-	final int kBookEnd_1 = 1137;	/* 100 deg */
+	/* Nonzero to block the config until success, zero to skip checking */
+	final int kTimeoutMs = 30;
 
 	/**
-	 * This function is called once on roboRIO bootup
-	 * Select the quadrature/mag encoder relative sensor
+	 * If the measured travel has a discontinuity, Note the extremities or "book
+	 * ends" of the travel.
+	 */
+	// final boolean kDiscontinuityPresent = true;
+	// final int kBookEnd_0 = 910; /* 80 deg */
+	// final int kBookEnd_1 = 1137; /* 100 deg */
+
+	// First attempt testing code gave these readings.
+	final boolean kDiscontinuityPresent = true;
+	final int kBookEnd_0 = 433; // pulseWidPos:433 => selSenPos:1857 pulseWidDeg:38.0 => selSenDeg:163.2
+	final int kBookEnd_1 = 3718; // pulseWidPos:3718 => selSenPos:1856 pulseWidDeg:326.7 => selSenDeg:163.1
+
+	/*
+		Two diff top readings recorded during first round of testing. Forgot to note which was top/bot.
+		pulseWidPos:433 => selSenPos:1857 pulseWidDeg:38.0 => selSenDeg:163.2
+		pulseWidPos:3718 => selSenPos:1856 pulseWidDeg:326.7 => selSenDeg:163.1
+	 	pulseWidPos:710 => selSenPos:2235 pulseWidDeg:62.4 => selSenDeg:196.4
+  	pulseWidPos:445 => selSenPos:2732 pulseWidDeg:39.1 => selSenDeg:240.1
+
+		After arm was fixed and we tested during unbag time week before first competition.
+		
+		Arm at bottom, two diff attempts to lower arm and record reading.
+		pulseWidPos:589 => selSenPos:4685 pulseWidDeg:51.7 => selSenDeg:411.7
+    pulseWidPos:1073 => selSenPos:5169 pulseWidDeg:94.3 => selSenDeg:454.3
+
+		Arm at top. 
+		Did see readings range from ~100 to ~1000 depending how fast and far the arm was moved.
+		There must be lots of slop in the chain?
+		pulseWidPos:729 => selSenPos:730 pulseWidDeg:64.0 => selSenDeg:64.1
+	*/
+
+	int periodicLoopCounter = 0;
+
+	/**
+	 * This function is called once on roboRIO bootup Select the quadrature/mag
+	 * encoder relative sensor
 	 */
 	public void robotInit() {
 		/* Factory Default Hardware to prevent unexpected behaviour */
@@ -127,58 +155,63 @@ public class Robot extends TimedRobot {
 
 		/* Seed quadrature to be absolute and continuous */
 		initQuadrature();
-		
+
 		/* Configure Selected Sensor for Talon */
-		_talon.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative,	// Feedback
-											0, 											// PID ID
-											kTimeoutMs);								// Timeout
+		// _talon.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, // Feedback
+		// 		0, // PID ID
+		// 		kTimeoutMs); // Timeout
+		_talon.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Absolute, // Feedback
+				0, // PID ID
+				kTimeoutMs); // Timeout
 	}
 
 	/**
-	 * Get the selected sensor register and print it 
+	 * Get the selected sensor register and print it
 	 */
 	public void disabledPeriodic() {
 		/**
-		 * When button is pressed, seed the quadrature register. You can do this
-		 * once on boot or during teleop/auton init. If you power cycle the 
-		 * Talon, press the button to confirm it's position is restored.
+		 * When button is pressed, seed the quadrature register. You can do this once on
+		 * boot or during teleop/auton init. If you power cycle the Talon, press the
+		 * button to confirm it's position is restored.
 		 */
 		if (_joy.getRawButton(1)) {
 			initQuadrature();
 		}
-
+	
 		/**
-		 * Quadrature is selected for soft-lim/closed-loop/etc. initQuadrature()
-		 * will initialize quad to become absolute by using PWD
+		 * Quadrature is selected for soft-lim/closed-loop/etc. initQuadrature() will
+		 * initialize quad to become absolute by using PWD
 		 */
 		int selSenPos = _talon.getSelectedSensorPosition(0);
-		int pulseWidthWithoutOverflows = 
-				_talon.getSensorCollection().getPulseWidthPosition() & 0xFFF;
+		int pulseWidthWithoutOverflows = _talon.getSensorCollection().getPulseWidthPosition() & 0xFFF;
 
 		/**
-		 * Display how we've adjusted PWM to produce a QUAD signal that is
-		 * absolute and continuous. Show in sensor units and in rotation
-		 * degrees.
+		 * Display how we've adjusted PWM to produce a QUAD signal that is absolute and
+		 * continuous. Show in sensor units and in rotation degrees.
 		 */
-		System.out.print("pulseWidPos:" + pulseWidthWithoutOverflows +
-						 "   =>    " + "selSenPos:" + selSenPos);
-		System.out.print("      ");
-		System.out.print("pulseWidDeg:" + ToDeg(pulseWidthWithoutOverflows) +
-						 "   =>    " + "selSenDeg:" + ToDeg(selSenPos));
-		System.out.println();
+		if (periodicLoopCounter % 10 == 0) {
+
+			System.out.print("pulseWidPos:" + pulseWidthWithoutOverflows + 
+			   "   =>    " + "selSenPos:" + selSenPos);
+			System.out.print("      ");
+			System.out.print("pulseWidDeg:" + ToDeg(pulseWidthWithoutOverflows) +
+				 "   =>    " + "selSenDeg:" + ToDeg(selSenPos));
+			System.out.println();
+		}
+		periodicLoopCounter++;
 	}
 
 	/**
-	 * Seed the quadrature position to become absolute. This routine also
-	 * ensures the travel is continuous.
+	 * Seed the quadrature position to become absolute. This routine also ensures
+	 * the travel is continuous.
 	 */
 	public void initQuadrature() {
 		/* get the absolute pulse width position */
 		int pulseWidth = _talon.getSensorCollection().getPulseWidthPosition();
 
 		/**
-		 * If there is a discontinuity in our measured range, subtract one half
-		 * rotation to remove it
+		 * If there is a discontinuity in our measured range, subtract one half rotation
+		 * to remove it
 		 */
 		if (kDiscontinuityPresent) {
 
@@ -188,15 +221,14 @@ public class Robot extends TimedRobot {
 			newCenter &= 0xFFF;
 
 			/**
-			 * Apply the offset so the discontinuity is in the unused portion of
-			 * the sensor
+			 * Apply the offset so the discontinuity is in the unused portion of the sensor
 			 */
 			pulseWidth -= newCenter;
 		}
 
 		/**
-		 * Mask out the bottom 12 bits to normalize to [0,4095],
-		 * or in other words, to stay within [0,360) degrees 
+		 * Mask out the bottom 12 bits to normalize to [0,4095], or in other words, to
+		 * stay within [0,360) degrees
 		 */
 		pulseWidth = pulseWidth & 0xFFF;
 
@@ -205,7 +237,7 @@ public class Robot extends TimedRobot {
 	}
 
 	/**
-	 * @param units CTRE mag encoder sensor units 
+	 * @param units CTRE mag encoder sensor units
 	 * @return degrees rounded to tenths.
 	 */
 	String ToDeg(int units) {
